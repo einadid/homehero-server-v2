@@ -23,8 +23,7 @@ const corsOptions = {
     'http://localhost:5174',
     'http://localhost:3000',
     'https://homehero-client.vercel.app',
-    'https://homehero-client.netlify.app/',
-    'https://homehero-client-1rpbzv4kv-einadids-projects.vercel.app',
+    'https://homehero-client.netlify.app/'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

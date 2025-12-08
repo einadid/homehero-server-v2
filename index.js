@@ -24,7 +24,6 @@ const corsOptions = {
     'http://localhost:3000',
     'https://homehero-client.vercel.app',
     'https://homehero-client-1rpbzv4kv-einadids-projects.vercel.app',
-    // Add more origins as needed
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -35,6 +34,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
+
+// Request Logger (Development)
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // ============================================================
 // MONGODB CONNECTION - SERVERLESS COMPATIBLE
@@ -97,13 +104,19 @@ const verifyToken = (req, res, next) => {
   const token = req.cookies?.token;
 
   if (!token) {
-    return res.status(401).json({ message: 'Unauthorized access - No token provided' });
+    return res.status(401).json({ 
+      success: false,
+      message: 'Unauthorized access - No token provided' 
+    });
   }
 
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
       console.error('JWT Verification Error:', err.message);
-      return res.status(401).json({ message: 'Unauthorized access - Invalid token' });
+      return res.status(401).json({ 
+        success: false,
+        message: 'Unauthorized access - Invalid token' 
+      });
     }
     req.user = decoded;
     next();
@@ -118,7 +131,7 @@ const verifyToken = (req, res, next) => {
 app.get('/', (req, res) => {
   res.json({
     message: '🏠 HomeHero API Server is Running!',
-    version: '2.0.0',
+    version: '2.1.0',
     status: 'OK',
     timestamp: new Date().toISOString(),
     endpoints: {
@@ -164,7 +177,6 @@ app.get('/', (req, res) => {
 // Health check
 app.get('/health', async (req, res) => {
   try {
-    // Test database connection
     await req.db.admin().ping();
     res.json({
       status: 'OK',
@@ -172,6 +184,7 @@ app.get('/health', async (req, res) => {
       database: 'Connected',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      memory: process.memoryUsage(),
     });
   } catch (error) {
     res.status(500).json({
@@ -192,7 +205,10 @@ app.post('/jwt', async (req, res) => {
     const user = req.body;
 
     if (!user?.email) {
-      return res.status(400).json({ message: 'Email is required' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Email is required' 
+      });
     }
 
     const token = jwt.sign(
@@ -208,10 +224,16 @@ app.post('/jwt', async (req, res) => {
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       })
-      .json({ success: true, message: 'Token generated successfully' });
+      .json({ 
+        success: true, 
+        message: 'Token generated successfully' 
+      });
   } catch (error) {
     console.error('JWT Generation Error:', error);
-    res.status(500).json({ message: 'Failed to generate token' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to generate token' 
+    });
   }
 });
 
@@ -225,10 +247,16 @@ app.post('/logout', (req, res) => {
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         maxAge: 0,
       })
-      .json({ success: true, message: 'Logged out successfully' });
+      .json({ 
+        success: true, 
+        message: 'Logged out successfully' 
+      });
   } catch (error) {
     console.error('Logout Error:', error);
-    res.status(500).json({ message: 'Failed to logout' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to logout' 
+    });
   }
 });
 
@@ -242,7 +270,10 @@ app.post('/users', async (req, res) => {
     const user = req.body;
 
     if (!user?.email) {
-      return res.status(400).json({ message: 'Email is required' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Email is required' 
+      });
     }
 
     const query = { email: user.email };
@@ -252,21 +283,32 @@ app.post('/users', async (req, res) => {
       await req.usersCollection.updateOne(query, {
         $set: { lastLoginAt: new Date().toISOString() },
       });
-      return res.json({ message: 'User already exists', insertedId: null });
+      return res.json({ 
+        success: true,
+        message: 'User login recorded',
+        insertedId: null 
+      });
     }
 
     const newUser = {
       ...user,
-      role: 'user',
+      role: user.role || 'user',
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
     };
 
     const result = await req.usersCollection.insertOne(newUser);
-    res.status(201).json({ message: 'User created successfully', insertedId: result.insertedId });
+    res.status(201).json({ 
+      success: true,
+      message: 'User created successfully', 
+      insertedId: result.insertedId 
+    });
   } catch (error) {
     console.error('Error saving user:', error);
-    res.status(500).json({ message: 'Failed to save user' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to save user' 
+    });
   }
 });
 
@@ -276,19 +318,31 @@ app.get('/users/:email', verifyToken, async (req, res) => {
     const email = req.params.email;
 
     if (req.user.email !== email) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
     const user = await req.usersCollection.findOne({ email });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
     }
 
-    res.json(user);
+    res.json({
+      success: true,
+      data: user
+    });
   } catch (error) {
     console.error('Error fetching user:', error);
-    res.status(500).json({ message: 'Failed to fetch user' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch user' 
+    });
   }
 });
 
@@ -298,9 +352,13 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
     const email = req.params.email;
 
     if (req.user.email !== email) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
+    // Get services created by this user
     const totalServices = await req.servicesCollection.countDocuments({
       providerEmail: email,
     });
@@ -311,10 +369,12 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
 
     const serviceIds = services.map((s) => s._id.toString());
 
+    // Get bookings for provider's services
     const providerBookings = await req.bookingsCollection
       .find({ serviceId: { $in: serviceIds } })
       .toArray();
 
+    // Get bookings made by user
     const userBookings = await req.bookingsCollection
       .find({ userEmail: email })
       .toArray();
@@ -330,6 +390,7 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
       .filter((b) => b.status === 'completed')
       .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
 
+    // Calculate average rating
     let totalRating = 0;
     let totalReviews = 0;
 
@@ -353,7 +414,7 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
         totalBookingsReceived,
         completedBookings,
         pendingBookings,
-        totalRevenue,
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
         averageRating,
         totalReviews,
         myBookings: userBookings.length,
@@ -361,7 +422,10 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching user stats:', error);
-    res.status(500).json({ message: 'Failed to fetch statistics' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch statistics' 
+    });
   }
 });
 
@@ -384,7 +448,10 @@ app.get('/services/all', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching all services:', error);
-    res.status(500).json({ message: 'Failed to fetch services' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch services' 
+    });
   }
 });
 
@@ -405,7 +472,10 @@ app.get('/services/featured', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching featured services:', error);
-    res.status(500).json({ message: 'Failed to fetch featured services' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch featured services' 
+    });
   }
 });
 
@@ -440,7 +510,10 @@ app.get('/services/top-rated', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching top rated services:', error);
-    res.status(500).json({ message: 'Failed to fetch top rated services' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch top rated services' 
+    });
   }
 });
 
@@ -487,7 +560,10 @@ app.get('/services/popular', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching popular services:', error);
-    res.status(500).json({ message: 'Failed to fetch popular services' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch popular services' 
+    });
   }
 });
 
@@ -588,7 +664,10 @@ app.get('/services', async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Error fetching services:', error);
-    res.status(500).json({ message: 'Failed to fetch services' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch services' 
+    });
   }
 });
 
@@ -598,7 +677,10 @@ app.get('/services/:id', async (req, res) => {
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid service ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid service ID' 
+      });
     }
 
     const service = await req.servicesCollection.findOne({
@@ -606,7 +688,10 @@ app.get('/services/:id', async (req, res) => {
     });
 
     if (!service) {
-      return res.status(404).json({ message: 'Service not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Service not found' 
+      });
     }
 
     res.json({
@@ -615,7 +700,10 @@ app.get('/services/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching service:', error);
-    res.status(500).json({ message: 'Failed to fetch service' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch service' 
+    });
   }
 });
 
@@ -625,7 +713,10 @@ app.get('/services/provider/:email', verifyToken, async (req, res) => {
     const email = req.params.email;
 
     if (req.user.email !== email) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
     const services = await req.servicesCollection
@@ -640,7 +731,10 @@ app.get('/services/provider/:email', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching provider services:', error);
-    res.status(500).json({ message: 'Failed to fetch services' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch services' 
+    });
   }
 });
 
@@ -665,7 +759,16 @@ app.post('/services', verifyToken, async (req, res) => {
 
     if (missingFields.length > 0) {
       return res.status(400).json({
+        success: false,
         message: `Missing required fields: ${missingFields.join(', ')}`,
+      });
+    }
+
+    // Verify the user is adding their own service
+    if (serviceData.providerEmail !== req.user.email) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only add services for your own account'
       });
     }
 
@@ -695,7 +798,10 @@ app.post('/services', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding service:', error);
-    res.status(500).json({ message: 'Failed to add service' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to add service' 
+    });
   }
 });
 
@@ -706,7 +812,10 @@ app.put('/services/:id', verifyToken, async (req, res) => {
     const updateData = req.body;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid service ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid service ID' 
+      });
     }
 
     const existingService = await req.servicesCollection.findOne({
@@ -714,13 +823,17 @@ app.put('/services/:id', verifyToken, async (req, res) => {
     });
 
     if (!existingService) {
-      return res.status(404).json({ message: 'Service not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Service not found' 
+      });
     }
 
     if (existingService.providerEmail !== req.user.email) {
-      return res
-        .status(403)
-        .json({ message: 'You can only update your own services' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'You can only update your own services' 
+      });
     }
 
     const updateDoc = {
@@ -748,7 +861,10 @@ app.put('/services/:id', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating service:', error);
-    res.status(500).json({ message: 'Failed to update service' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to update service' 
+    });
   }
 });
 
@@ -758,7 +874,10 @@ app.delete('/services/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid service ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid service ID' 
+      });
     }
 
     const existingService = await req.servicesCollection.findOne({
@@ -766,19 +885,24 @@ app.delete('/services/:id', verifyToken, async (req, res) => {
     });
 
     if (!existingService) {
-      return res.status(404).json({ message: 'Service not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Service not found' 
+      });
     }
 
     if (existingService.providerEmail !== req.user.email) {
-      return res
-        .status(403)
-        .json({ message: 'You can only delete your own services' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'You can only delete your own services' 
+      });
     }
 
     const result = await req.servicesCollection.deleteOne({
       _id: new ObjectId(id),
     });
 
+    // Also delete all bookings for this service
     await req.bookingsCollection.deleteMany({ serviceId: id });
 
     res.json({
@@ -788,7 +912,10 @@ app.delete('/services/:id', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting service:', error);
-    res.status(500).json({ message: 'Failed to delete service' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to delete service' 
+    });
   }
 });
 
@@ -799,13 +926,17 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
     const { rating, comment, bookingId } = req.body;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid service ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid service ID' 
+      });
     }
 
     if (!rating || rating < 1 || rating > 5) {
-      return res
-        .status(400)
-        .json({ message: 'Rating must be between 1 and 5' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Rating must be between 1 and 5' 
+      });
     }
 
     const service = await req.servicesCollection.findOne({
@@ -813,9 +944,13 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
     });
 
     if (!service) {
-      return res.status(404).json({ message: 'Service not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Service not found' 
+      });
     }
 
+    // Check if user has a completed booking for this service
     const booking = await req.bookingsCollection.findOne({
       serviceId: id,
       userEmail: req.user.email,
@@ -825,8 +960,8 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
 
     if (!booking) {
       return res.status(400).json({
-        message:
-          'You can only review services you have booked and completed',
+        success: false,
+        message: 'You can only review services you have booked and completed',
       });
     }
 
@@ -840,11 +975,13 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
+    // Add review to service
     await req.servicesCollection.updateOne(
       { _id: new ObjectId(id) },
       { $push: { reviews: review } }
     );
 
+    // Mark booking as reviewed
     await req.bookingsCollection.updateOne(
       { _id: booking._id },
       { $set: { hasReviewed: true } }
@@ -857,7 +994,10 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding review:', error);
-    res.status(500).json({ message: 'Failed to add review' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to add review' 
+    });
   }
 });
 
@@ -888,12 +1028,24 @@ app.post('/bookings', verifyToken, async (req, res) => {
 
     if (missingFields.length > 0) {
       return res.status(400).json({
+        success: false,
         message: `Missing required fields: ${missingFields.join(', ')}`,
       });
     }
 
+    // Verify the user is booking for themselves
+    if (bookingData.userEmail !== req.user.email) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only create bookings for yourself'
+      });
+    }
+
     if (!ObjectId.isValid(bookingData.serviceId)) {
-      return res.status(400).json({ message: 'Invalid service ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid service ID' 
+      });
     }
 
     const service = await req.servicesCollection.findOne({
@@ -901,13 +1053,18 @@ app.post('/bookings', verifyToken, async (req, res) => {
     });
 
     if (!service) {
-      return res.status(404).json({ message: 'Service not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Service not found' 
+      });
     }
 
+    // Prevent self-booking
     if (service.providerEmail === bookingData.userEmail) {
-      return res
-        .status(400)
-        .json({ message: 'You cannot book your own service' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'You cannot book your own service' 
+      });
     }
 
     const newBooking = {
@@ -939,7 +1096,10 @@ app.post('/bookings', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating booking:', error);
-    res.status(500).json({ message: 'Failed to create booking' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to create booking' 
+    });
   }
 });
 
@@ -949,7 +1109,10 @@ app.get('/bookings/user/:email', verifyToken, async (req, res) => {
     const email = req.params.email;
 
     if (req.user.email !== email) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
     const bookings = await req.bookingsCollection
@@ -964,7 +1127,10 @@ app.get('/bookings/user/:email', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching user bookings:', error);
-    res.status(500).json({ message: 'Failed to fetch bookings' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch bookings' 
+    });
   }
 });
 
@@ -974,7 +1140,10 @@ app.get('/bookings/provider/:email', verifyToken, async (req, res) => {
     const email = req.params.email;
 
     if (req.user.email !== email) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
     const bookings = await req.bookingsCollection
@@ -989,7 +1158,10 @@ app.get('/bookings/provider/:email', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching provider bookings:', error);
-    res.status(500).json({ message: 'Failed to fetch bookings' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch bookings' 
+    });
   }
 });
 
@@ -999,7 +1171,10 @@ app.get('/bookings/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid booking ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid booking ID' 
+      });
     }
 
     const booking = await req.bookingsCollection.findOne({
@@ -1007,14 +1182,21 @@ app.get('/bookings/:id', verifyToken, async (req, res) => {
     });
 
     if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Booking not found' 
+      });
     }
 
+    // Check if user has access to this booking
     if (
       booking.userEmail !== req.user.email &&
       booking.providerEmail !== req.user.email
     ) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
     res.json({
@@ -1023,18 +1205,27 @@ app.get('/bookings/:id', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching booking:', error);
-    res.status(500).json({ message: 'Failed to fetch booking' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch booking' 
+    });
   }
 });
 
-// Update booking status (for provider)
+// ============================================================
+// 🔥 UPDATE BOOKING STATUS (Provider/User Action)
+// ============================================================
+
 app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid booking ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid booking ID' 
+      });
     }
 
     const validStatuses = [
@@ -1047,6 +1238,7 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
+        success: false,
         message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
       });
     }
@@ -1056,19 +1248,32 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
     });
 
     if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Booking not found' 
+      });
     }
 
-    if (status !== 'cancelled' && booking.providerEmail !== req.user.email) {
-      return res
-        .status(403)
-        .json({ message: 'Only the service provider can update status' });
+    // Authorization check based on action
+    if (status === 'cancelled') {
+      // Both user and provider can cancel
+      if (booking.userEmail !== req.user.email && booking.providerEmail !== req.user.email) {
+        return res.status(403).json({ 
+          success: false,
+          message: 'You do not have permission to cancel this booking' 
+        });
+      }
+    } else {
+      // Only provider can change other statuses
+      if (booking.providerEmail !== req.user.email) {
+        return res.status(403).json({ 
+          success: false,
+          message: 'Only the service provider can update booking status' 
+        });
+      }
     }
 
-    if (status === 'cancelled' && booking.userEmail !== req.user.email && booking.providerEmail !== req.user.email) {
-      return res.status(403).json({ message: 'Forbidden access' });
-    }
-
+    // Update the booking status
     const result = await req.bookingsCollection.updateOne(
       { _id: new ObjectId(id) },
       {
@@ -1086,7 +1291,10 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating booking status:', error);
-    res.status(500).json({ message: 'Failed to update booking status' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to update booking status' 
+    });
   }
 });
 
@@ -1096,7 +1304,10 @@ app.delete('/bookings/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid booking ID' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid booking ID' 
+      });
     }
 
     const booking = await req.bookingsCollection.findOne({
@@ -1104,19 +1315,24 @@ app.delete('/bookings/:id', verifyToken, async (req, res) => {
     });
 
     if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Booking not found' 
+      });
     }
 
     if (booking.userEmail !== req.user.email) {
-      return res
-        .status(403)
-        .json({ message: 'You can only cancel your own bookings' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'You can only delete your own bookings' 
+      });
     }
 
     if (booking.status === 'completed') {
-      return res
-        .status(400)
-        .json({ message: 'Cannot delete completed bookings' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Cannot delete completed bookings' 
+      });
     }
 
     const result = await req.bookingsCollection.deleteOne({
@@ -1125,12 +1341,15 @@ app.delete('/bookings/:id', verifyToken, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Booking cancelled successfully',
+      message: 'Booking deleted successfully',
       deletedCount: result.deletedCount,
     });
   } catch (error) {
-    console.error('Error cancelling booking:', error);
-    res.status(500).json({ message: 'Failed to cancel booking' });
+    console.error('Error deleting booking:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to delete booking' 
+    });
   }
 });
 
@@ -1155,7 +1374,10 @@ app.get('/categories', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching categories:', error);
-    res.status(500).json({ message: 'Failed to fetch categories' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch categories' 
+    });
   }
 });
 
@@ -1187,7 +1409,10 @@ app.get('/stats/platform', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching platform stats:', error);
-    res.status(500).json({ message: 'Failed to fetch statistics' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch statistics' 
+    });
   }
 });
 
@@ -1197,7 +1422,10 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
     const email = req.params.email;
 
     if (req.user.email !== email) {
-      return res.status(403).json({ message: 'Forbidden access' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Forbidden access' 
+      });
     }
 
     const services = await req.servicesCollection
@@ -1211,15 +1439,11 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
       .toArray();
 
     const totalBookings = bookings.length;
-    const pendingBookings = bookings.filter(
-      (b) => b.status === 'pending'
-    ).length;
-    const completedBookings = bookings.filter(
-      (b) => b.status === 'completed'
-    ).length;
-    const cancelledBookings = bookings.filter(
-      (b) => b.status === 'cancelled'
-    ).length;
+    const pendingBookings = bookings.filter((b) => b.status === 'pending').length;
+    const confirmedBookings = bookings.filter((b) => b.status === 'confirmed').length;
+    const inProgressBookings = bookings.filter((b) => b.status === 'in-progress').length;
+    const completedBookings = bookings.filter((b) => b.status === 'completed').length;
+    const cancelledBookings = bookings.filter((b) => b.status === 'cancelled').length;
 
     const totalRevenue = bookings
       .filter((b) => b.status === 'completed')
@@ -1241,6 +1465,7 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
       ? parseFloat((totalRating / totalReviews).toFixed(1))
       : 0;
 
+    // Monthly revenue for last 6 months
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -1270,9 +1495,11 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
         totalServices: services.length,
         totalBookings,
         pendingBookings,
+        confirmedBookings,
+        inProgressBookings,
         completedBookings,
         cancelledBookings,
-        totalRevenue,
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
         averageRating,
         totalReviews,
         monthlyRevenue,
@@ -1280,7 +1507,10 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching provider stats:', error);
-    res.status(500).json({ message: 'Failed to fetch statistics' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch statistics' 
+    });
   }
 });
 
@@ -1294,6 +1524,7 @@ app.use((req, res) => {
     success: false,
     message: 'Route not found',
     requestedUrl: req.originalUrl,
+    availableEndpoints: '/',
   });
 });
 
@@ -1311,8 +1542,9 @@ app.use((err, req, res, next) => {
 // START SERVER (Local Development)
 // ============================================================
 
-app.listen(port, () => {
-  console.log(`
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`
   ╔═══════════════════════════════════════════════╗
   ║                                               ║
   ║   🏠 HomeHero Server is Running!              ║
@@ -1322,8 +1554,9 @@ app.listen(port, () => {
   ║   📝 API Docs: http://localhost:${port}/         ║
   ║                                               ║
   ╚═══════════════════════════════════════════════╝
-  `);
-});
+    `);
+  });
+}
 
 // ============================================================
 // EXPORT FOR VERCEL SERVERLESS

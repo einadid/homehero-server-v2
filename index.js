@@ -23,7 +23,8 @@ const corsOptions = {
     'http://localhost:5174',
     'http://localhost:3000',
     'https://homehero-client.vercel.app',
-    'https://homehero-client.netlify.app/'
+    'https://homehero-client.netlify.app',
+    // Add your production URLs here
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -97,11 +98,14 @@ app.use(async (req, res, next) => {
 });
 
 // ============================================================
-// JWT VERIFICATION MIDDLEWARE
+// JWT VERIFICATION MIDDLEWARE (UPDATED - Cookie + Header Support)
 // ============================================================
 
 const verifyToken = (req, res, next) => {
-  const token = req.cookies?.token;
+  // 🔥 Check token from Cookie OR Authorization Header
+  const cookieToken = req.cookies?.token;
+  const headerToken = req.headers.authorization?.split(' ')[1];
+  const token = cookieToken || headerToken;
 
   if (!token) {
     return res.status(401).json({ 
@@ -131,9 +135,10 @@ const verifyToken = (req, res, next) => {
 app.get('/', (req, res) => {
   res.json({
     message: '🏠 HomeHero API Server is Running!',
-    version: '2.1.0',
+    version: '2.2.0',
     status: 'OK',
     timestamp: new Date().toISOString(),
+    authMethod: 'Cookie + Bearer Token Support',
     endpoints: {
       auth: {
         login: 'POST /jwt',
@@ -196,7 +201,7 @@ app.get('/health', async (req, res) => {
 });
 
 // ============================================================
-// AUTH ROUTES
+// AUTH ROUTES (UPDATED - Returns token in response)
 // ============================================================
 
 // Generate JWT Token
@@ -217,6 +222,7 @@ app.post('/jwt', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    // 🔥 Set cookie AND return token in response body
     res
       .cookie('token', token, {
         httpOnly: true,
@@ -226,7 +232,8 @@ app.post('/jwt', async (req, res) => {
       })
       .json({ 
         success: true, 
-        message: 'Token generated successfully' 
+        message: 'Token generated successfully',
+        token  // 🔥 Token included in response for localStorage storage
       });
   } catch (error) {
     console.error('JWT Generation Error:', error);
@@ -1213,7 +1220,7 @@ app.get('/bookings/:id', verifyToken, async (req, res) => {
 });
 
 // ============================================================
-// 🔥 UPDATE BOOKING STATUS (Provider/User Action)
+// UPDATE BOOKING STATUS (Provider/User Action)
 // ============================================================
 
 app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
@@ -1552,6 +1559,7 @@ if (process.env.NODE_ENV !== 'production') {
   ║   📍 Local:    http://localhost:${port}          ║
   ║   🌐 Network:  Check your IP                  ║
   ║   📝 API Docs: http://localhost:${port}/         ║
+  ║   🔐 Auth:     Cookie + Bearer Token          ║
   ║                                               ║
   ╚═══════════════════════════════════════════════╝
     `);

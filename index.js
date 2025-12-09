@@ -39,7 +39,7 @@ app.use(cookieParser());
 // MONGODB CONNECTION
 // ============================================================
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@homehero.4vzhoed.mongodb.net/?retryWrites=true&w=majority&appName=HomeHero`;
 
 const client = new MongoClient(uri, {
   serverApi: {

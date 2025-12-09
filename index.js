@@ -53,22 +53,31 @@ const client = new MongoClient(uri, {
 // JWT VERIFICATION MIDDLEWARE
 // ============================================================
 
+// server/index.js
+const jwt = require('jsonwebtoken');
+
 const verifyToken = (req, res, next) => {
-  const token = req.cookies?.token;
+  const token =
+    req.cookies?.token ||
+    req.headers.authorization?.split(' ')[1]; // ✅ খুব গুরুত্বপূর্ণ
 
   if (!token) {
-    return res.status(401).json({ message: 'Unauthorized access - No token provided' });
+    return res.status(401).send({ message: 'Unauthorized access: No token provided' });
   }
 
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
       console.error('JWT Verification Error:', err.message);
-      return res.status(401).json({ message: 'Unauthorized access - Invalid token' });
+      return res.status(401).send({ message: 'Unauthorized access: Invalid token' });
     }
+
     req.user = decoded;
     next();
   });
 };
+
+module.exports = verifyToken;
+
 
 // Verify user owns the data (optional middleware)
 const verifyOwnership = (req, res, next) => {

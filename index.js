@@ -24,7 +24,7 @@ const corsOptions = {
     'http://localhost:3000',
     // Add your production URLs here
     'https://your-app.netlify.app',
-    'https://your-app.vercel.app',
+    'https://homehero-client.vercel.app',
     'https://your-app.web.app',
   ],
   credentials: true,

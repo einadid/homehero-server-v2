@@ -1,5 +1,5 @@
 // ============================================================
-// HOMEHERO BACKEND SERVER - VERCEL COMPATIBLE VERSION
+// HOMEHERO BACKEND SERVER - VERCEL COMPATIBLE VERSION (FIXED)
 // ============================================================
 
 const express = require('express');
@@ -13,33 +13,51 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // ============================================================
-// MIDDLEWARE CONFIGURATION
+// MIDDLEWARE CONFIGURATION (FIXED CORS)
 // ============================================================
+//hello don
+// ✅ CORS Configuration - Single, Complete Setup
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'https://homehero-client.vercel.app',
+  'https://homehero-server-v2.vercel.app'
+];
 
-// CORS Configuration
 const corsOptions = {
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:3000',
-    'https://homehero-client.vercel.app',
-    'https://homehero-client.netlify.app',
-    // Add your production URLs here
-  ],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('Blocked by CORS:', origin);
+      callback(null, true); // Allow all for debugging - change to callback(new Error('Not allowed by CORS')) in strict mode
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'authorization', 'X-Requested-With'],
   optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
+
+// ✅ Handle preflight requests for all routes (Important for Mobile)
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(cookieParser());
 
 // Request Logger (Development)
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV !== 'production') {
   app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    if (req.headers.authorization) {
+      console.log('Auth Header Present:', req.headers.authorization.substring(0, 20) + '...');
+    }
     next();
   });
 }
@@ -92,25 +110,42 @@ app.use(async (req, res, next) => {
     res.status(500).json({ 
       success: false,
       message: 'Database Connection Failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }
 });
 
 // ============================================================
-// JWT VERIFICATION MIDDLEWARE (UPDATED - Cookie + Header Support)
+// ✅ JWT VERIFICATION MIDDLEWARE (FIXED - Robust Token Extraction)
 // ============================================================
 
 const verifyToken = (req, res, next) => {
-  // 🔥 Check token from Cookie OR Authorization Header
+  // ✅ Check token from multiple sources (Cookie + Header with case handling)
   const cookieToken = req.cookies?.token;
-  const headerToken = req.headers.authorization?.split(' ')[1];
-  const token = cookieToken || headerToken;
+  
+  // Handle both lowercase and uppercase Authorization header
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  const headerToken = authHeader?.startsWith('Bearer ') 
+    ? authHeader.split(' ')[1] 
+    : authHeader?.split(' ')[1];
+  
+  // Also check localStorage token sent as custom header (fallback)
+  const customToken = req.headers['x-access-token'];
+  
+  const token = cookieToken || headerToken || customToken;
+
+  console.log('Token Sources Check:', {
+    hasCookie: !!cookieToken,
+    hasHeader: !!headerToken,
+    hasCustom: !!customToken,
+    finalToken: token ? 'Present' : 'Missing'
+  });
 
   if (!token) {
     return res.status(401).json({ 
       success: false,
-      message: 'Unauthorized access - No token provided' 
+      message: 'Unauthorized access - No token provided',
+      hint: 'Please login again'
     });
   }
 
@@ -119,10 +154,12 @@ const verifyToken = (req, res, next) => {
       console.error('JWT Verification Error:', err.message);
       return res.status(401).json({ 
         success: false,
-        message: 'Unauthorized access - Invalid token' 
+        message: 'Unauthorized access - Invalid or expired token',
+        error: err.message
       });
     }
     req.user = decoded;
+    console.log('Token verified for:', decoded.email);
     next();
   });
 };
@@ -135,10 +172,10 @@ const verifyToken = (req, res, next) => {
 app.get('/', (req, res) => {
   res.json({
     message: '🏠 HomeHero API Server is Running!',
-    version: '2.2.0',
+    version: '2.3.0',
     status: 'OK',
     timestamp: new Date().toISOString(),
-    authMethod: 'Cookie + Bearer Token Support',
+    authMethod: 'Cookie + Bearer Token + LocalStorage Support',
     endpoints: {
       auth: {
         login: 'POST /jwt',
@@ -201,7 +238,7 @@ app.get('/health', async (req, res) => {
 });
 
 // ============================================================
-// AUTH ROUTES (UPDATED - Returns token in response)
+// ✅ AUTH ROUTES (FIXED - Better Cookie + Token Response)
 // ============================================================
 
 // Generate JWT Token
@@ -222,18 +259,25 @@ app.post('/jwt', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    // 🔥 Set cookie AND return token in response body
+    console.log('JWT Generated for:', user.email);
+
+    // ✅ Cookie settings for cross-site (Vercel)
+    const cookieOptions = {
+      httpOnly: true,
+      secure: true, // Always true for production
+      sameSite: 'none', // Required for cross-site cookies
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/',
+    };
+
+    // Set cookie AND return token in response body
     res
-      .cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      })
+      .cookie('token', token, cookieOptions)
       .json({ 
         success: true, 
         message: 'Token generated successfully',
-        token  // 🔥 Token included in response for localStorage storage
+        token, // ✅ Token included for localStorage storage
+        expiresIn: '7d'
       });
   } catch (error) {
     console.error('JWT Generation Error:', error);
@@ -250,9 +294,9 @@ app.post('/logout', (req, res) => {
     res
       .clearCookie('token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-        maxAge: 0,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
       })
       .json({ 
         success: true, 
@@ -365,7 +409,6 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
       });
     }
 
-    // Get services created by this user
     const totalServices = await req.servicesCollection.countDocuments({
       providerEmail: email,
     });
@@ -376,12 +419,10 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
 
     const serviceIds = services.map((s) => s._id.toString());
 
-    // Get bookings for provider's services
     const providerBookings = await req.bookingsCollection
       .find({ serviceId: { $in: serviceIds } })
       .toArray();
 
-    // Get bookings made by user
     const userBookings = await req.bookingsCollection
       .find({ userEmail: email })
       .toArray();
@@ -397,7 +438,6 @@ app.get('/users/stats/:email', verifyToken, async (req, res) => {
       .filter((b) => b.status === 'completed')
       .reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0);
 
-    // Calculate average rating
     let totalRating = 0;
     let totalReviews = 0;
 
@@ -588,7 +628,6 @@ app.get('/services', async (req, res) => {
       limit,
     } = req.query;
 
-    // Build filter query
     const filter = {};
 
     if (search) {
@@ -609,7 +648,6 @@ app.get('/services', async (req, res) => {
       if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
     }
 
-    // Build sort options
     let sort = {};
     switch (sortBy) {
       case 'price-low':
@@ -771,7 +809,6 @@ app.post('/services', verifyToken, async (req, res) => {
       });
     }
 
-    // Verify the user is adding their own service
     if (serviceData.providerEmail !== req.user.email) {
       return res.status(403).json({
         success: false,
@@ -909,7 +946,6 @@ app.delete('/services/:id', verifyToken, async (req, res) => {
       _id: new ObjectId(id),
     });
 
-    // Also delete all bookings for this service
     await req.bookingsCollection.deleteMany({ serviceId: id });
 
     res.json({
@@ -957,7 +993,6 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
       });
     }
 
-    // Check if user has a completed booking for this service
     const booking = await req.bookingsCollection.findOne({
       serviceId: id,
       userEmail: req.user.email,
@@ -982,13 +1017,11 @@ app.post('/services/:id/reviews', verifyToken, async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    // Add review to service
     await req.servicesCollection.updateOne(
       { _id: new ObjectId(id) },
       { $push: { reviews: review } }
     );
 
-    // Mark booking as reviewed
     await req.bookingsCollection.updateOne(
       { _id: booking._id },
       { $set: { hasReviewed: true } }
@@ -1040,7 +1073,6 @@ app.post('/bookings', verifyToken, async (req, res) => {
       });
     }
 
-    // Verify the user is booking for themselves
     if (bookingData.userEmail !== req.user.email) {
       return res.status(403).json({
         success: false,
@@ -1066,7 +1098,6 @@ app.post('/bookings', verifyToken, async (req, res) => {
       });
     }
 
-    // Prevent self-booking
     if (service.providerEmail === bookingData.userEmail) {
       return res.status(400).json({ 
         success: false,
@@ -1195,7 +1226,6 @@ app.get('/bookings/:id', verifyToken, async (req, res) => {
       });
     }
 
-    // Check if user has access to this booking
     if (
       booking.userEmail !== req.user.email &&
       booking.providerEmail !== req.user.email
@@ -1219,10 +1249,7 @@ app.get('/bookings/:id', verifyToken, async (req, res) => {
   }
 });
 
-// ============================================================
-// UPDATE BOOKING STATUS (Provider/User Action)
-// ============================================================
-
+// Update booking status
 app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1261,9 +1288,7 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
       });
     }
 
-    // Authorization check based on action
     if (status === 'cancelled') {
-      // Both user and provider can cancel
       if (booking.userEmail !== req.user.email && booking.providerEmail !== req.user.email) {
         return res.status(403).json({ 
           success: false,
@@ -1271,7 +1296,6 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
         });
       }
     } else {
-      // Only provider can change other statuses
       if (booking.providerEmail !== req.user.email) {
         return res.status(403).json({ 
           success: false,
@@ -1280,7 +1304,6 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
       }
     }
 
-    // Update the booking status
     const result = await req.bookingsCollection.updateOne(
       { _id: new ObjectId(id) },
       {
@@ -1305,7 +1328,7 @@ app.patch('/bookings/:id/status', verifyToken, async (req, res) => {
   }
 });
 
-// Cancel/Delete booking
+// Delete booking
 app.delete('/bookings/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1364,7 +1387,6 @@ app.delete('/bookings/:id', verifyToken, async (req, res) => {
 // CATEGORY ROUTES
 // ============================================================
 
-// Get all categories with count
 app.get('/categories', async (req, res) => {
   try {
     const categories = await req.servicesCollection
@@ -1392,7 +1414,6 @@ app.get('/categories', async (req, res) => {
 // STATISTICS ROUTES
 // ============================================================
 
-// Get platform statistics (public)
 app.get('/stats/platform', async (req, res) => {
   try {
     const totalServices = await req.servicesCollection.countDocuments();
@@ -1423,7 +1444,6 @@ app.get('/stats/platform', async (req, res) => {
   }
 });
 
-// Get provider statistics
 app.get('/stats/provider/:email', verifyToken, async (req, res) => {
   try {
     const email = req.params.email;
@@ -1472,7 +1492,6 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
       ? parseFloat((totalRating / totalReviews).toFixed(1))
       : 0;
 
-    // Monthly revenue for last 6 months
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -1525,7 +1544,6 @@ app.get('/stats/provider/:email', verifyToken, async (req, res) => {
 // 404 & ERROR HANDLERS
 // ============================================================
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -1535,13 +1553,12 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error('Server Error:', err);
   res.status(500).json({
     success: false,
     message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    error: process.env.NODE_ENV !== 'production' ? err.message : undefined,
   });
 });
 
